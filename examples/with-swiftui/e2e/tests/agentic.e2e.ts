@@ -8,7 +8,19 @@ test('the agent gets a greeting', { skip }, async ({ app, agent, screen }) => {
   await app.open();
 
   // The agent works out which field and button to use.
-  await agent.act('get the app to greet {name}', { params: { name: 'Grace' } });
+  /**
+   * @compiled agent.act("get the app to greet {name}")
+   * @from "await agent.act('get the app to greet {name}', { params: { name: 'Grace' } });"
+   * @recording f4dd395950c6
+   * @step 9dadd2295d82.71e0d496a8c9
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByTestId("name").fill("Grace");
+  await screen.getByTestId("greet").tap();
+  await expect(screen.getByTestId("greeting")).toBeVisible();
+  /** @end compiled */
 
   // Pair each agent step with a check that does not depend on the model.
   await expect(screen.getByTestId('greeting')).toHaveText('hello, Grace!');
