@@ -18,7 +18,18 @@ test('the agent gets a greeting', { skip }, async ({ app, agent, screen }) => {
 test('the agent finds the empty-name error', { skip }, async ({ app, agent, screen }) => {
   await app.open();
 
-  await agent.act('press greet without typing a name');
+  /**
+   * @compiled agent.act("press greet without typing a name")
+   * @from "await agent.act('press greet without typing a name');"
+   * @recording feb33d72a53c
+   * @step baea30ef819e.44136fa355b3
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByTestId("greet").tap();
+  await expect(screen.getByTestId("error")).toBeVisible();
+  /** @end compiled */
 
   await expect(screen.getByTestId('error')).toHaveText('enter a name first.');
   await agent.assert('the app asks for a name');

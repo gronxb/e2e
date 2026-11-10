@@ -119,7 +119,21 @@ test('extract returns schema-validated data from the screen', async ({
 
 test('act and a judgment cooperate in one flow', async ({ browser, agent, screen }) => {
   await browser.goto('/forms');
-  await agent.act('fill the profile with the name "Ada Lovelace" and the team "Platform", then save');
+  /**
+   * @compiled agent.act("fill the profile with the name \"Ada Lovelace\" and the team \"Platform\", then save")
+   * @from "await agent.act('fill the profile with the name \"Ada Lovelace\" and the team \"Platform\", then save');"
+   * @recording d40d5c4f05a0
+   * @step a6b81797aa2b.44136fa355b3
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByRole("textbox", "Full name").fill("Ada Lovelace");
+  await screen.getByRole("combobox", "Team").selectOption("Platform");
+  await screen.getByRole("button", "Save profile").tap();
+  await expect(screen.getByRole("status", "Save result")).toHaveText("Saved profile for Ada Lovelace");
+  await expect(screen.getByRole("textbox", "Full name")).toHaveValue("Ada Lovelace");
+  /** @end compiled */
   await agent.assert('the profile form reports it was saved');
   await expect(screen.getByLabel('Full name')).toHaveValue('Ada Lovelace');
 });

@@ -12,9 +12,20 @@ import { expect, unique } from 'e2e';
 test('act adds an address with a run-unique label', async ({ app, agent, screen }) => {
   const label = `Cabin ${Date.now().toString(36)}`;
   await app.open('/e/saved-addresses');
-  await agent.act('add a new address labelled {label} at {line}', {
-    params: { label: unique(label), line: '7 Pine Way, Bend' },
-  });
+  /**
+   * @compiled agent.act("add a new address labelled {label} at {line}")
+   * @from "await agent.act('add a new address labelled {label} at {line}', {\n    params: { label: unique(label), line: '7 Pine Way, Bend' },\n  });"
+   * @recording 9f03ade8aca3
+   * @step 7e6f99066c5b.49ed432ec362
+   * @recordedAt 2026-10-04
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByTestId("label-input").fill(label);
+  await screen.getByTestId("line-input").fill("7 Pine Way, Bend");
+  await screen.getByTestId("add-button").tap();
+  await expect(screen.getByTestId("toast")).toHaveText("Address saved");
+  /** @end compiled */
   await expect(screen.getByTestId('address-list')).toContainText(label);
   await expect(screen.getByTestId('toast')).toHaveText('Address saved');
 });

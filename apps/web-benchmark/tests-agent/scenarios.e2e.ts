@@ -153,8 +153,19 @@ for (const scenario of SCENARIOS) {
   }
 }
 
-test('act filters the list and the URL carries the filter', async ({ app, agent, browser }) => {
+test('act filters the list and the URL carries the filter', async ({ app, agent, browser, screen }) => {
   await app.open('/e/filter-deep-link');
-  await agent.act('filter the product list down to the mug');
+  /**
+   * @compiled agent.act("filter the product list down to the mug")
+   * @from "await agent.act('filter the product list down to the mug');"
+   * @recording 618740e5f3cb
+   * @step c54ac6f470b1.44136fa355b3
+   * @recordedAt 2026-10-04
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByTestId("filter-input").fill("mug");
+  await expect(screen.getByTestId("filter-input")).toHaveValue("mug");
+  /** @end compiled */
   await expect(browser).toHaveURL('/e/filter-deep-link?q=mug');
 });

@@ -8,7 +8,19 @@ test('the agent gets a greeting', { skip }, async ({ app, agent, screen }) => {
   await app.open('/');
 
   // The agent works out which field and button to use.
-  await agent.act('get the app to greet {name}', { params: { name: 'Grace' } });
+  /**
+   * @compiled agent.act("get the app to greet {name}")
+   * @from "await agent.act('get the app to greet {name}', { params: { name: 'Grace' } });"
+   * @recording a08523933b7c
+   * @step 9dadd2295d82.71e0d496a8c9
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByRole("textbox", "name").fill("Grace");
+  await screen.getByRole("button", "greet").tap();
+  await expect(screen.getByText("hello, Grace!")).toBeVisible();
+  /** @end compiled */
 
   // Pair each agent step with a check that does not depend on the model.
   await expect(screen.getByRole('status')).toHaveText('hello, Grace!');
@@ -18,7 +30,18 @@ test('the agent gets a greeting', { skip }, async ({ app, agent, screen }) => {
 test('the agent finds the empty-name error', { skip }, async ({ app, agent, screen }) => {
   await app.open('/');
 
-  await agent.act('press greet without typing a name');
+  /**
+   * @compiled agent.act("press greet without typing a name")
+   * @from "await agent.act('press greet without typing a name');"
+   * @recording 6b763e8b0403
+   * @step baea30ef819e.44136fa355b3
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByRole("button", "greet").tap();
+  await expect(screen.getByText("enter a name first.")).toBeVisible();
+  /** @end compiled */
 
   await expect(screen.getByRole('alert')).toHaveText('enter a name first.');
   await agent.assert('the app asks for a name');
