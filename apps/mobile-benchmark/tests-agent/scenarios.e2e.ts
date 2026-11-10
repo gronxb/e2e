@@ -500,7 +500,21 @@ test("act completes Product Catalog", optionsFor("Product Catalog"), async ({ ag
   const scenario = scenarioNamed("Product Catalog");
   await scenario.prepare?.({ device, platform });
   await openScenario({ app, device, screen }, scenario.name);
-  await agent.act("Complete this scenario as the screen instructs: open Trail Mix 500 g (not a look-alike), set the quantity to 2, add it to the cart, then open the cart");
+  /**
+   * @compiled agent.act("Complete this scenario as the screen instructs: open Trail Mix 500 g (not a loo…")
+   * @from "await agent.act(\"Complete this scenario as the screen instructs: open Trail Mix 500 g (not a look-alike), set the quantity to 2, add it to the cart, then open the cart\");"
+   * @recording d8c30c8431ed
+   * @step df6d87ed0275.44136fa355b3
+   * @recordedAt 2026-10-15
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByTestId("product-trail-mix-500").tap();
+  await screen.getByTestId("quantity-increase").tap();
+  await screen.getByTestId("add-to-cart").tap();
+  await screen.getByTestId("open-cart").tap();
+  await expect(screen.getByTestId("success-message")).toBeVisible();
+  /** @end compiled */
   await checkOutcome(scenario, { agent, screen });
 });
 
@@ -508,7 +522,21 @@ test("act completes Error Recovery", optionsFor("Error Recovery"), async ({ agen
   const scenario = scenarioNamed("Error Recovery");
   await scenario.prepare?.({ device, platform });
   await openScenario({ app, device, screen }, scenario.name);
-  await agent.act("Complete this scenario as the screen instructs: retry the failed load, then delete the draft and confirm");
+  /**
+   * @compiled agent.act("Complete this scenario as the screen instructs: retry the failed load, then del…")
+   * @from "await agent.act(\"Complete this scenario as the screen instructs: retry the failed load, then delete the draft and confirm\");"
+   * @recording 4c9b8d6da6cd
+   * @step e8369dfb1ec6.44136fa355b3
+   * @recordedAt 2026-10-15
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByTestId("retry-button").tap();
+  await screen.getByTestId("delete-draft").tap();
+  await screen.getByTestId("confirm-delete").tap();
+  await expect(screen.getByTestId("Error Recovery")).toBeVisible();
+  await expect(screen.getByTestId("success-message")).toBeVisible();
+  /** @end compiled */
   await checkOutcome(scenario, { agent, screen });
 });
 
@@ -540,7 +568,19 @@ test("act completes Apple Pay", optionsFor("Apple Pay"), async ({ agent, app, de
   const scenario = scenarioNamed("Apple Pay");
   await scenario.prepare?.({ device, platform });
   await openScenario({ app, device, screen }, scenario.name);
-  await agent.act("Complete this scenario as the screen instructs: start the Apple Pay payment and authorize it in the sheet that appears; the sheet is not in the tree, use the screenshot");
+  /**
+   * @compiled agent.act("Complete this scenario as the screen instructs: start the Apple Pay payment and…")
+   * @from "await agent.act(\"Complete this scenario as the screen instructs: start the Apple Pay payment and authorize it in the sheet that appears; the sheet is not in the tree, use the screenshot\");"
+   * @recording 82c7cc740528
+   * @step 94f39431cf1c.44136fa355b3
+   * @recordedAt 2026-10-30
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.getByTestId("apple-pay-button").tap();
+  await screen.getByTestId("footer").tap();
+  await expect(screen.getByTestId("success-message")).toBeVisible();
+  /** @end compiled */
   await checkOutcome(scenario, { agent, screen });
 });
 
