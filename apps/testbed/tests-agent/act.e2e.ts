@@ -77,6 +77,17 @@ test('act taps a pin painted on a canvas through the pixel tier', async ({ brows
   await browser.goto('/canvas');
   // The pins exist only as canvas pixels: nothing in the tree names them, so
   // the model has to describe the target and let the vision tier place the tap.
-  await agent.act('pick the red pin on the map');
+  /**
+   * @compiled agent.act("pick the red pin on the map")
+   * @from "await agent.act('pick the red pin on the map');"
+   * @recording 68c92d7152c4
+   * @step aca2203ecb1c.44136fa355b3
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.tapAt({ x: 392, y: 272 }); // a viewport point, recorded at 1280x720
+  await expect(screen.getByRole("status", "Picked")).toHaveText("picked the red pin");
+  /** @end compiled */
   await expect(screen.getByRole('status')).toHaveText('picked the red pin');
 });

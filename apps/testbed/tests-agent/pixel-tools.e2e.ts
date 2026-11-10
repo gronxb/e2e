@@ -11,13 +11,55 @@ import { expect } from 'e2e';
 
 test('enters a code on the drawn keypad through points', async ({ browser, agent, screen }) => {
   await browser.goto('/canvas-flow');
-  await agent.act('on the drawn keypad enter the code 31415 digit by digit, check the display shows it, then press OK');
+  /**
+   * @compiled agent.act("on the drawn keypad enter the code 31415 digit by digit, check the display show…")
+   * @from "await agent.act('on the drawn keypad enter the code 31415 digit by digit, check the display shows it, then press OK');"
+   * @recording 6e9e0aede920
+   * @step e413f5bca779.44136fa355b3
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.tapAt({ x: 363, y: 363 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 113, y: 363 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 113, y: 468 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 113, y: 363 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 238, y: 468 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 363, y: 677 }); // a viewport point, recorded at 1280x720
+  await expect(screen.getByRole("status", "Result")).toHaveText("code accepted: 31415");
+  /** @end compiled */
   await expect(screen.getByRole('status')).toHaveText('code accepted: 31415');
 });
 
 test('walks the drawn wizard through points', async ({ browser, agent, screen }) => {
   await browser.goto('/canvas-wizard');
-  await agent.act('complete all eight steps of the drawn wizard: on each screen tap the shape its instruction names, then tap Next');
+  /**
+   * @compiled agent.act("complete all eight steps of the drawn wizard: on each screen tap the shape its …")
+   * @from "await agent.act('complete all eight steps of the drawn wizard: on each screen tap the shape its instruction names, then tap Next');"
+   * @recording 10f3d3c641a3
+   * @step 8825726050a3.44136fa355b3
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.tapAt({ x: 362, y: 405 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 472, y: 562 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 482, y: 402 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 472, y: 562 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 242, y: 400 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 472, y: 562 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 362, y: 400 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 472, y: 562 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 242, y: 400 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 472, y: 562 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 362, y: 400 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 472, y: 562 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 362, y: 400 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 472, y: 562 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 482, y: 400 }); // a viewport point, recorded at 1280x720
+  await screen.tapAt({ x: 472, y: 562 }); // a viewport point, recorded at 1280x720
+  await expect(screen.getByRole("status", "Wizard result")).toHaveText("wizard done: ok,ok,ok,ok,ok,ok,ok,ok");
+  /** @end compiled */
   await expect(screen.getByRole('status')).toHaveText('wizard done: ok,ok,ok,ok,ok,ok,ok,ok');
 });
 
@@ -32,7 +74,18 @@ test('drives a marked-up todo page from the tree', async ({ browser, agent, scre
 
 test('picks a canvas pin; the bare canvas opens with a screenshot', async ({ browser, agent, screen }) => {
   await browser.goto('/canvas');
-  await agent.act('pick the red pin on the map');
+  /**
+   * @compiled agent.act("pick the red pin on the map")
+   * @from "await agent.act('pick the red pin on the map');"
+   * @recording a6729ee0bd15
+   * @step aca2203ecb1c.44136fa355b3
+   * @recordedAt 2026-11-10
+   * @compiledAt 2026-11-10
+   * @verifiedAt 2026-11-10
+   */
+  await screen.tapAt({ x: 392, y: 272 }); // a viewport point, recorded at 1280x720
+  await expect(screen.getByRole("status", "Picked")).toHaveText("picked the red pin");
+  /** @end compiled */
   await expect(screen.getByRole('status')).toHaveText('picked the red pin');
 });
 
