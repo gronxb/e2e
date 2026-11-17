@@ -1,3 +1,4 @@
+import type { JsonValue } from '@e2e-dev/core/lib/types';
 /** Child-process `UnitRunner`: spawn, messaging, exit tracking. */
 
 import { fork, type ChildProcess } from 'node:child_process';
@@ -30,17 +31,19 @@ function resolveEntry(): { path: string; execArgv: string[] } {
 }
 
 /** Run-wide settings every child-process worker boots with. */
-export type ChildProcessSpawnOptions = Omit<WorkerBootstrap, 'targetName' | 'workerSlot'> & {
+export type ChildProcessSpawnOptions = Omit<WorkerBootstrap, 'targetName' | 'workerSlot' | 'provided'> & {
   /** The environment each target's workers are spawned with. */
   readonly envFor: (targetName: string) => NodeJS.ProcessEnv;
+  /** What the target's bootstrap provided on a slot in an earlier worker. */
+  readonly providedFor?: (targetName: string, workerSlot: number) => Readonly<Record<string, JsonValue>> | undefined;
 };
 
 /** Creates the spawn factory the scheduler uses for child-process execution. */
 export function childProcessSpawner(options: ChildProcessSpawnOptions): SpawnUnitRunner {
-  const { envFor, ...bootstrap } = options;
+  const { envFor, providedFor, ...bootstrap } = options;
   return (targetName, workerSlot, events) =>
     new ChildProcessRunner(
-      { ...bootstrap, targetName, workerSlot },
+      { ...bootstrap, targetName, workerSlot, provided: providedFor?.(targetName, workerSlot) },
       { projectRoot: bootstrap.projectRoot, env: envFor(targetName) },
       events,
     );

@@ -6,6 +6,7 @@
  */
 
 import inspector from 'node:inspector';
+import type { JsonValue } from '@e2e-dev/core/lib/types';
 import type { ModuleRegistration } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '@e2e-dev/core/lib/config/resolve';
@@ -60,6 +61,8 @@ export interface TargetWorkerDeps {
   readonly inMemory?: InMemoryAttempts | undefined;
   /** How steps wait for the runner's `step-release` (`e2e run --step`); undefined when they never do. */
   readonly step?: StepHolding | undefined;
+  /** What the target's bootstrap provided on this slot in an earlier worker. */
+  readonly provided?: Readonly<Record<string, JsonValue>> | undefined;
 }
 
 /** Transport callbacks a target worker needs. */
@@ -185,6 +188,10 @@ export class TargetWorker {
           },
         },
       });
+      if (deps.target.bootstrap !== undefined) {
+        const values = await this.executor.runBootstrap(deps.target.bootstrap, deps.provided ?? {});
+        this.host.emit({ type: 'provided', values });
+      }
       this.host.emit({ type: 'ready' });
     });
   }

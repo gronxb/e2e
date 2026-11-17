@@ -46,7 +46,9 @@ import { StepRecorder, type StepHoldRequest, type StepProgress } from '@e2e-dev/
 import { AttemptHolds, type HeldStep } from './step-hold.ts';
 import { WorkerModels } from '@e2e-dev/core/lib/run/worker-models';
 import { classifyAttemptStatus, EngineSessions, type EngineSessionsOptions } from '@e2e-dev/core/lib/run/engine-sessions';
-import type { SetupFn } from '@e2e-dev/core/lib/types';
+import type { BootstrapContext, JsonValue, SetupFn, TargetBootstrap } from '@e2e-dev/core/lib/types';
+import { validateJsonValue } from '@e2e-dev/core/lib/internal/json-value';
+import { addProvidedValue, inject } from '../provided.ts';
 
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;
@@ -255,6 +257,92 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
    * setup-failure dependencies) belongs to the scheduler, so every pair
    * reaching here is runnable.
    */
+  /**
+   * Runs the target's bootstrap on this worker, before its first unit,
+   * inside an attempt of its own so the engine's fixtures (`device`) and
+   * `app` work the way they do in a test. `inject` reads the target's
+   * `provide` and what a bootstrap on this slot provided before; returns
+   * those earlier values with what this run added.
+   */
+  async runBootstrap(
+    bootstrap: TargetBootstrap,
+    earlier: Readonly<Record<string, JsonValue>>,
+  ): Promise<Record<string, JsonValue>> {
+    const attemptId = uuidv7();
+    const abort = new AbortController();
+    const onInterrupt = (): void => abort.abort();
+    this.interruptSignal.addEventListener('abort', onInterrupt, { once: true });
+    const owner = `bootstrap-${this.target.name}-${String(this.options.workerSlot)}`;
+    const steps = new StepRecorder(attemptId, {
+      attempt: { id: attemptId, index: 0 },
+      maxEventsPerStep: this.config.limits.maxEventsPerStep,
+      projectRoot: this.config.projectRoot,
+      redact: (text) => redactForSession(undefined, this.config.allSecrets, text),
+    });
+    const artifacts = createAttemptArtifacts({
+      artifactsRoot: this.artifactsRoot,
+      segments: attemptSegments(this.rerunDir, owner, 0),
+      attemptId,
+      currentStepId: () => steps.currentStepId,
+      ledger: () => undefined,
+      identity: { runId: this.options.runId, testId: owner, attemptId },
+    });
+    const provided: Record<string, JsonValue> = { ...earlier };
+    const session = await this.launchSession(
+      { session: undefined, recordings: { trace: undefined, video: undefined } },
+      attemptId,
+      artifacts.dir,
+      abort.signal,
+    );
+    const record: { status: 'passed'; cleanup: AttemptRecord['cleanup'] } = { status: 'passed', cleanup: 'complete' };
+    const secondaryErrors: SerializedError[] = [];
+    try {
+      const budget = new AttemptBudget(abort.signal, new Deadline(this.config.launchTimeout));
+      const { fixtures } = createFixtures({
+        config: this.config,
+        target: this.target,
+        session,
+        steps,
+        budget,
+        runId: this.options.runId,
+        attemptId,
+        attempt: { testId: owner, attemptId, titlePath: [owner], index: 0, signal: abort.signal, memory: new Map<string, unknown>() },
+        artifacts: artifacts.sink,
+        priorSteps: () => steps.completed(),
+        agentContext: undefined,
+        saveSession: undefined,
+        debug: this.debug,
+        models: this.models,
+      });
+      const base: BootstrapContext = {
+        target: { name: this.target.name, platform: this.target.platform, slot: this.options.workerSlot },
+        runId: this.options.runId,
+        signal: abort.signal,
+        inject: (key: string) => inject(key as never) as unknown,
+        provide: (key: string, value: JsonValue) => {
+          validateJsonValue(value, `bootstrap provide("${key}")`);
+          addProvidedValue(key, value);
+          provided[key] = value;
+        },
+      };
+      // The engine's fixtures (`device`) and `app` come from the attempt; an
+      // unknown name fails the way it does in a test.
+      const context = new Proxy(base, {
+        get: (own, key) => (typeof key !== 'string' || key in own ? Reflect.get(own, key) : Reflect.get(fixtures, key)),
+      });
+      await withTimeout(
+        Promise.resolve(bootstrap(context)),
+        this.config.launchTimeout,
+        () => new TestTimeoutError(`bootstrap of target "${this.target.name}" timed out after ${String(this.config.launchTimeout)}ms`),
+      );
+    } finally {
+      abort.abort();
+      await this.closeSession(session, { attemptId, video: undefined }, record, artifacts.sink, secondaryErrors);
+      this.interruptSignal.removeEventListener('abort', onInterrupt);
+    }
+    return provided;
+  }
+
   async runFileUnit(
     file: FileRef,
     filePairs: readonly TestTargetPair[],

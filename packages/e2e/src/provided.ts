@@ -1,6 +1,7 @@
 /**
- * `inject()`: the values a target's `provide` hands to the code that runs on
- * it, the way Vitest's `provide`/`inject` hand config values to tests. A worker
+ * `inject()`: the values a target provides to the code that runs on it, its
+ * static `provide` and what its `bootstrap` provided, the way Vitest's
+ * `provide`/`inject` hand config and globalSetup values to tests. A worker
  * runs one target, so the values live in the worker process; the runner's
  * own process holds none, and a test file read there while collecting gets
  * an error instead of a value that differs from the worker's.
@@ -27,8 +28,15 @@ export function clearProvidedValues(): void {
   delete (globalThis as Holder)[STORE];
 }
 
+/** Adds one provided value to this process's values. */
+export function addProvidedValue(key: string, value: JsonValue): void {
+  const holder = globalThis as Holder;
+  holder[STORE] = { ...holder[STORE], [key]: value };
+}
+
 /**
- * A value the current target provides. `undefined` for a key nobody provided, as in Vitest.
+ * A value the current target provides: its `provide`, then what its
+ * `bootstrap` provided. `undefined` for a key nobody provided, as in Vitest.
  * Throws outside a target's worker, such as while the runner collects tests.
  */
 export function inject<K extends keyof ProvidedContext & string>(key: K): ProvidedContext[K] {
@@ -36,7 +44,7 @@ export function inject<K extends keyof ProvidedContext & string>(key: K): Provid
   if (values === undefined) {
     throw new TestError(
       'INVALID_ARGUMENT',
-      `inject("${key}") runs only while a target runs: in a test, a hook, or a fixture, never at a test file's top level`,
+      `inject("${key}") runs only while a target runs: in a test, a hook, a fixture, or bootstrap, never at a test file's top level`,
     );
   }
   return values[key] as ProvidedContext[K];

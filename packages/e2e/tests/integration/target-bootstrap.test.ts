@@ -1,0 +1,97 @@
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { runProjectWithConfigFile } from '../helpers/run-project.ts';
+
+/** A worker-path config whose targets log every bootstrap and teardown to `log`. */
+const config = (log: string, failing: string) => `import { appendFileSync } from 'node:fs';
+import type { E2EConfig, Target } from 'e2e';
+import { createFakeEngine, FAKE_APP } from '../../helpers/fake-engine.ts';
+
+const log = (line: string) => appendFileSync(${JSON.stringify(log)}, line + '\\n');
+
+const role = (name: string): Target => ({
+  name,
+  platform: 'fake',
+  engine: createFakeEngine().engine,
+  app: FAKE_APP,
+  provide: { role: name },
+  bootstrap: async ({ target, inject, provide }) => {
+    const known = inject('account') as string | undefined;
+    log('bootstrap ' + target.name + '#' + String(target.slot) + ' known=' + String(known) + ' pid=' + String(process.pid));
+    if (target.name === ${JSON.stringify(failing)}) throw new Error('backend refused');
+    provide('account', known ?? target.name + '-account');
+  },
+  teardown: async ({ target, inject }) => {
+    log('teardown ' + target.name + '#' + String(target.slot) + ' account=' + String(inject('account')) + ' pid=' + String(process.pid));
+  },
+});
+
+export default { targets: [role('admin'), role('member')], workers: 1 } satisfies E2EConfig;
+`;
+
+const SUITE = {
+  'tests/a-fails.e2e.ts': `import { test } from 'e2e';
+
+test('fails once to replace the worker', async () => {
+  throw new Error('on purpose');
+});
+`,
+  'tests/b-reads.e2e.ts': `import { inject, test } from 'e2e';
+
+test('reads what bootstrap provided', async () => {
+  if (inject('account' as never) !== inject('role' as never) + '-account') throw new Error('wrong account');
+});
+`,
+};
+
+/** The log's lines with the pid replaced by who wrote it. */
+const lines = (log: string) =>
+  readFileSync(log, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => line.replace(/ pid=(\d+)$/u, (_, pid: string) => (pid === String(process.pid) ? ' runner' : ' worker')));
+
+describe('target bootstrap and teardown', () => {
+  it(
+    'runs bootstrap per worker, shows a replacement worker what its slot provided, and tears down in the runner',
+    async () => {
+      const log = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-bootstrap-')), 'log.txt');
+      const { outcome, project } = await runProjectWithConfigFile(SUITE, { configSource: config(log, 'none') });
+      const statuses = outcome.results.map((result) => `${result.target.name} ${result.test.title} ${result.status}`).toSorted();
+      expect(statuses).toEqual([
+        'admin fails once to replace the worker failed',
+        'admin reads what bootstrap provided passed',
+        'member fails once to replace the worker failed',
+        'member reads what bootstrap provided passed',
+      ]);
+      const admin = lines(log).filter((line) => line.includes('admin'));
+      expect(admin).toEqual([
+        'bootstrap admin#0 known=undefined worker',
+        'bootstrap admin#0 known=admin-account worker',
+        'teardown admin#0 account=admin-account runner',
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'skips the target whose bootstrap keeps failing and tears nothing down for it',
+    async () => {
+      const log = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-bootstrap-')), 'log.txt');
+      const { outcome, project } = await runProjectWithConfigFile(SUITE, { configSource: config(log, 'member') });
+      const member = outcome.results.filter((result) => result.target.name === 'member');
+      expect(member.map((result) => result.status)).toEqual(['skipped', 'skipped']);
+      const admin = outcome.results.filter((result) => result.target.name === 'admin');
+      expect(admin.map((result) => result.status).toSorted()).toEqual(['failed', 'passed']);
+      const memberLines = lines(log).filter((line) => line.includes('member'));
+      expect(memberLines).toEqual(['bootstrap member#0 known=undefined worker', 'bootstrap member#0 known=undefined worker']);
+      expect(lines(log)).toContain('teardown admin#0 account=admin-account runner');
+      expect(outcome.exitCode).not.toBe(0);
+      project.cleanup();
+    },
+    120_000,
+  );
+});

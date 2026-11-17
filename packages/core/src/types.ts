@@ -1327,10 +1327,47 @@ export interface Target {
   video?: RecordingMode;
   /**
    * Values the code running on this target reads with `inject()` from
-   * `e2e`: tests, hooks, and fixtures. JSON values only.
+   * `e2e`: tests, hooks, fixtures, and `bootstrap`. JSON values only.
    */
   provide?: Readonly<Record<string, JsonValue>>;
+  /**
+   * Runs in each of the target's workers before its first test, after the
+   * engine started: log in on the app's backend, set the device up. Runs
+   * again when a worker is replaced; what it provided on the same slot is
+   * visible through `inject` then, so one-time work can be skipped.
+   */
+  bootstrap?(context: BootstrapContext): void | Promise<void>;
+  /** Runs in the runner once per slot whose `bootstrap` succeeded, after the target's work ended. No device. */
+  teardown?(context: TeardownContext): void | Promise<void>;
 }
+
+/** Where a `bootstrap` or `teardown` runs. */
+export interface BootstrapTarget {
+  readonly name: string;
+  readonly platform: string;
+  /** The worker slot: one device on a device engine. */
+  readonly slot: number;
+}
+
+/** What `teardown` receives. */
+export interface TeardownContext {
+  readonly target: BootstrapTarget;
+  readonly runId: string;
+  /** The target's `provide`, then what its `bootstrap` provided on this slot. */
+  inject(key: string): unknown;
+  readonly signal: AbortSignal;
+}
+
+/** What `bootstrap` receives: the engine's fixtures (`device`, ...), `app`, and these. */
+export interface BootstrapContext extends TeardownContext {
+  /** Hands a JSON value to the tests on this worker, and to later bootstraps and the teardown of this slot. */
+  provide(key: string, value: JsonValue): void;
+}
+
+/** The function type of a target's `bootstrap`. */
+export type TargetBootstrap = NonNullable<Target['bootstrap']>;
+/** The function type of a target's `teardown`. */
+export type TargetTeardown = NonNullable<Target['teardown']>;
 
 /**
  * Which attempts keep a trace or record a video, and which are kept.

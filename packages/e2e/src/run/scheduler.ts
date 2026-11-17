@@ -1,3 +1,4 @@
+import type { JsonValue } from '@e2e-dev/core/lib/types';
 /**
  * The run engine: dispatches file-target work units across workers. Per target, setup units complete before ordinary units
  * dispatch; a worker is bound to one target, runs one unit at a time, and is
@@ -99,6 +100,8 @@ export interface RunUnitsOptions {
   readonly forceGraceMs: number;
   readonly spawn: SpawnUnitRunner;
   readonly events: SchedulerEvents;
+  /** What a worker's bootstrap provided, for the runner to keep per target and slot. */
+  readonly onProvided?: (targetName: string, workerSlot: number, values: Readonly<Record<string, JsonValue>>) => void;
   /**
    * Answers a worker's held step (`e2e run --step`): it resolves to let the
    * step run. `signal` aborts when the hold ends without an answer: the
@@ -873,6 +876,10 @@ class Scheduler {
         worker.queued = undefined;
         if (queued !== undefined) worker.dispatch(queued, this.answersFailures);
         this.wakeUp();
+        break;
+      }
+      case 'provided': {
+        this.options.onProvided?.(worker.targetName, worker.workerSlot, message.values);
         break;
       }
       case 'pair-start': {
