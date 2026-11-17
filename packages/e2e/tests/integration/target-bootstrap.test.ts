@@ -6,7 +6,7 @@ import { runProjectWithConfigFile } from '../helpers/run-project.ts';
 
 /** A worker-path config whose targets log every bootstrap and teardown to `log`. */
 const config = (log: string, failing: string) => `import { appendFileSync } from 'node:fs';
-import type { E2EConfig, Target } from 'e2e';
+import type { App, BootstrapContext, E2EConfig, Screen, Target } from 'e2e';
 import { createFakeEngine, FAKE_APP } from '../../helpers/fake-engine.ts';
 
 const log = (line: string) => appendFileSync(${JSON.stringify(log)}, line + '\\n');
@@ -17,9 +17,10 @@ const role = (name: string): Target => ({
   engine: createFakeEngine().engine,
   app: FAKE_APP,
   provide: { role: name },
-  bootstrap: async ({ target, inject, provide }) => {
+  bootstrap: async ({ target, inject, provide, app, screen }: BootstrapContext & { app: App; screen: Screen }) => {
     const known = inject('account') as string | undefined;
-    log('bootstrap ' + target.name + '#' + String(target.slot) + ' known=' + String(known) + ' pid=' + String(process.pid));
+    const fixtures = typeof app.open === 'function' && typeof screen.getByText === 'function' ? 'fixtures' : 'none';
+    log('bootstrap ' + target.name + '#' + String(target.slot) + ' known=' + String(known) + ' ' + fixtures + ' pid=' + String(process.pid));
     if (target.name === ${JSON.stringify(failing)}) throw new Error('backend refused');
     provide('account', known ?? target.name + '-account');
   },
@@ -68,8 +69,8 @@ describe('target bootstrap and teardown', () => {
       ]);
       const admin = lines(log).filter((line) => line.includes('admin'));
       expect(admin).toEqual([
-        'bootstrap admin#0 known=undefined worker',
-        'bootstrap admin#0 known=admin-account worker',
+        'bootstrap admin#0 known=undefined fixtures worker',
+        'bootstrap admin#0 known=admin-account fixtures worker',
         'teardown admin#0 account=admin-account runner',
       ]);
       project.cleanup();
@@ -87,7 +88,7 @@ describe('target bootstrap and teardown', () => {
       const admin = outcome.results.filter((result) => result.target.name === 'admin');
       expect(admin.map((result) => result.status).toSorted()).toEqual(['failed', 'passed']);
       const memberLines = lines(log).filter((line) => line.includes('member'));
-      expect(memberLines).toEqual(['bootstrap member#0 known=undefined worker', 'bootstrap member#0 known=undefined worker']);
+      expect(memberLines).toEqual(['bootstrap member#0 known=undefined fixtures worker', 'bootstrap member#0 known=undefined fixtures worker']);
       expect(lines(log)).toContain('teardown admin#0 account=admin-account runner');
       expect(outcome.exitCode).not.toBe(0);
       project.cleanup();
