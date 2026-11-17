@@ -682,10 +682,11 @@ test('B shows the new checkout', async ({ app, screen }) => {
   comes from `ProvidedContext`, which you widen with `declare module 'e2e'`.
 - A key the target does not provide returns `undefined`, as in Vitest.
 - A worker runs one target, so `inject` returns that target's values.
+- Not available yet in an MCP session or under `openHost`, where it throws.
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | Called while a test file is collected, such as at its top level. The runner collects every file once for all targets, so a value there would differ from the worker's. Branch inside the body with `test.skip` instead. |
+| `COLLECTION_ERROR` | Called while a test file is collected, such as at its top level. The runner collects every file once for all targets, so a value there would differ from the worker's. Branch inside the body with `test.skip` instead. |
 
 ## Types
 
