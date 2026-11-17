@@ -262,11 +262,13 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
    * inside an attempt of its own so the engine's fixtures (`device`) and
    * `app` work the way they do in a test. `inject` reads the target's
    * `provide` and what a bootstrap on this slot provided before; returns
-   * those earlier values with what this run added.
+   * those earlier values with what this run added. `onProvide` hears each
+   * `provide()` as it happens, with every value so far.
    */
   async runBootstrap(
     bootstrap: TargetBootstrap,
     earlier: Readonly<Record<string, JsonValue>>,
+    onProvide: (values: Readonly<Record<string, JsonValue>>) => void = () => undefined,
   ): Promise<Record<string, JsonValue>> {
     const attemptId = uuidv7();
     const abort = new AbortController();
@@ -323,6 +325,10 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
           validateJsonValue(value, `bootstrap provide("${key}")`);
           addProvidedValue(key, value);
           provided[key] = value;
+          // Sent now, not when bootstrap returns: what it took on a backend is
+          // the slot's to tear down even if the rest of bootstrap fails or the
+          // worker dies, and a replacement worker starts from it.
+          onProvide({ ...provided });
         },
       };
       // The engine's fixtures (`device`) and `app` come from the attempt; an

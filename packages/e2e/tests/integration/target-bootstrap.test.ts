@@ -4,8 +4,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runProjectWithConfigFile } from '../helpers/run-project.ts';
 
-/** A worker-path config whose targets log every bootstrap and teardown to `log`. */
-const config = (log: string, failing: string) => `import { appendFileSync } from 'node:fs';
+/**
+ * A worker-path config whose targets log every bootstrap and teardown to
+ * `log`. `failing` throws before providing; `afterProvide` provides, then
+ * fails as a sign-in would (`throw`, every time) or kills its worker
+ * (`crash`, the first time only).
+ */
+const config = (log: string, failing: string, afterProvide: { target: string; how: 'throw' | 'crash' } | undefined = undefined) => `import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import type { App, BootstrapContext, E2EConfig, Screen, Target } from 'e2e';
 import { createFakeEngine, FAKE_APP } from '../../helpers/fake-engine.ts';
 
@@ -23,6 +28,14 @@ const role = (name: string): Target => ({
     log('bootstrap ' + target.name + '#' + String(target.slot) + ' known=' + String(known) + ' ' + fixtures + ' pid=' + String(process.pid));
     if (target.name === ${JSON.stringify(failing)}) throw new Error('backend refused');
     provide('account', known ?? target.name + '-account');
+    if (target.name === ${JSON.stringify(afterProvide?.target ?? '')}) {
+      if (${JSON.stringify(afterProvide?.how)} === 'throw') throw new Error('sign-in failed');
+      const marker = ${JSON.stringify(log)} + '.crashed';
+      if (!existsSync(marker)) {
+        writeFileSync(marker, '');
+        process.exit(1);
+      }
+    }
   },
   teardown: async ({ target, inject }) => {
     log('teardown ' + target.name + '#' + String(target.slot) + ' account=' + String(inject('account')) + ' pid=' + String(process.pid));
@@ -53,6 +66,8 @@ const lines = (log: string) =>
     .trim()
     .split('\n')
     .map((line) => line.replace(/ pid=(\d+)$/u, (_, pid: string) => (pid === String(process.pid) ? ' runner' : ' worker')));
+
+const newLog = () => path.join(mkdtempSync(path.join(tmpdir(), 'e2e-bootstrap-')), 'log.txt');
 
 describe('target bootstrap and teardown', () => {
   it(
@@ -91,6 +106,43 @@ describe('target bootstrap and teardown', () => {
       expect(memberLines).toEqual(['bootstrap member#0 known=undefined fixtures worker', 'bootstrap member#0 known=undefined fixtures worker']);
       expect(lines(log)).toContain('teardown admin#0 account=admin-account runner');
       expect(outcome.exitCode).not.toBe(0);
+      project.cleanup();
+    },
+    120_000,
+  );
+  it(
+    'keeps what a failing bootstrap provided: the next worker starts from it, and the slot is torn down',
+    async () => {
+      const log = newLog();
+      const { outcome, project } = await runProjectWithConfigFile(SUITE, { configSource: config(log, 'none', { target: 'member', how: 'throw' }) });
+      const member = outcome.results.filter((result) => result.target.name === 'member');
+      expect(member.map((result) => result.status)).toEqual(['skipped', 'skipped']);
+      expect(outcome.report.run.errors.map((error) => error.code)).toContain('WORKER_INIT_FAILED');
+      expect(lines(log).filter((line) => line.includes('member'))).toEqual([
+        'bootstrap member#0 known=undefined fixtures worker',
+        'bootstrap member#0 known=member-account fixtures worker',
+        'teardown member#0 account=member-account runner',
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'keeps what bootstrap provided when its worker dies right after',
+    async () => {
+      const log = newLog();
+      const { outcome, project } = await runProjectWithConfigFile(SUITE, { configSource: config(log, 'none', { target: 'member', how: 'crash' }) });
+      const statuses = outcome.results
+        .filter((result) => result.target.name === 'member')
+        .map((result) => `${result.test.title} ${result.status}`)
+        .toSorted();
+      expect(statuses).toEqual(['fails once to replace the worker failed', 'reads what bootstrap provided passed']);
+      const member = lines(log).filter((line) => line.includes('member'));
+      expect(member[0]).toBe('bootstrap member#0 known=undefined fixtures worker');
+      expect(member.slice(1, -1).every((line) => line === 'bootstrap member#0 known=member-account fixtures worker')).toBe(true);
+      expect(member.at(-1)).toBe('teardown member#0 account=member-account runner');
+      expect(member.filter((line) => line.startsWith('teardown'))).toHaveLength(1);
       project.cleanup();
     },
     120_000,

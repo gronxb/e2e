@@ -1,3 +1,4 @@
+import type { JsonValue } from '@e2e-dev/core/lib/types';
 /**
  * In-process `UnitRunner`, used when the config cannot cross a process
  * boundary — a supplied `rawConfig` may hold live engine handles and
@@ -44,6 +45,8 @@ export interface InProcessRunnerOptions {
   readonly step: StepHolding | undefined;
   /** The environment each target's workers run with; see `EngineInitInfo.env`. */
   readonly envFor: (targetName: string) => Readonly<Record<string, string | undefined>>;
+  /** What the target's bootstrap provided on a slot in an earlier worker; see `ChildProcessSpawnOptions.providedFor`. */
+  readonly providedFor?: (targetName: string, workerSlot: number) => Readonly<Record<string, JsonValue>> | undefined;
 }
 
 class InProcessRunner implements UnitRunner {
@@ -176,9 +179,11 @@ class InProcessRunner implements UnitRunner {
     if (target === undefined) {
       throw new ConfigurationError('UNKNOWN_TARGET', `unknown target "${this.targetName}"`);
     }
+    const provided = this.options.providedFor?.(this.targetName, this.workerSlot);
     // One in-process worker runs at a time, so the process's values are this target's.
-    setProvidedValues(target.provide);
+    setProvidedValues({ ...target.provide, ...provided });
     return {
+      provided,
       config,
       target,
       sessionStore: this.options.sessionStore,

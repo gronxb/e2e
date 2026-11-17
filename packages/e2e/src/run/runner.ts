@@ -1103,6 +1103,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             debug,
             step: stepHolding,
             envFor: workerEnvFor(plans, env),
+            providedFor: (targetName, slot) => providedBySlot.get(`${targetName}#${String(slot)}`)?.values,
           })
         : childProcessSpawner({
             configPath: workerConfigPath,
@@ -1225,8 +1226,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // shutdown. Services go down after the apps that depended on them; a
     // failing service teardown command is a cleanup error of the run, not a
     // crash.
-    // Each target's teardown, once per slot whose bootstrap succeeded, before
-    // the engines finish: it may release what bootstrap took on the app's backend.
+    // Each target's teardown, once per slot whose bootstrap succeeded or
+    // provided anything, before the engines finish: it releases what
+    // bootstrap took on the app's backend, even when bootstrap failed after
+    // providing it or a worker on the slot crashed.
     const targetTeardowns = async (): Promise<void> => {
       for (const { targetName, slot, values } of providedBySlot.values()) {
         const target = config.targets.find((candidate) => candidate.name === targetName);

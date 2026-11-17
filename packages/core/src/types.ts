@@ -1332,12 +1332,18 @@ export interface Target {
   provide?: Readonly<Record<string, JsonValue>>;
   /**
    * Runs in each of the target's workers before its first test, after the
-   * engine started: log in on the app's backend, set the device up. Runs
-   * again when a worker is replaced; what it provided on the same slot is
-   * visible through `inject` then, so one-time work can be skipped.
+   * engine started: log in on the app's backend, set the device up. Each
+   * `provide()` reaches the runner when it is called. Runs again when a
+   * worker is replaced, after a failing test, a crash, or a failed
+   * bootstrap; what was provided on the same slot is visible through
+   * `inject` then, so one-time work can be skipped.
    */
   bootstrap?(context: BootstrapContext): void | Promise<void>;
-  /** Runs in the runner once per slot whose `bootstrap` succeeded, after the target's work ended. No device. */
+  /**
+   * Runs in the runner at the end of the run, once per slot whose `bootstrap`
+   * succeeded or provided anything, even when it failed afterwards or a
+   * worker on the slot crashed. No device.
+   */
   teardown?(context: TeardownContext): void | Promise<void>;
 }
 

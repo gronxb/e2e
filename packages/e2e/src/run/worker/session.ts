@@ -189,7 +189,10 @@ export class TargetWorker {
         },
       });
       if (deps.target.bootstrap !== undefined) {
-        const values = await this.executor.runBootstrap(deps.target.bootstrap, deps.provided ?? {});
+        const values = await this.executor.runBootstrap(deps.target.bootstrap, deps.provided ?? {}, (sofar) => {
+          this.host.emit({ type: 'provided', values: sofar });
+        });
+        // Also when it provided nothing: a slot whose bootstrap succeeded is torn down.
         this.host.emit({ type: 'provided', values });
       }
       this.host.emit({ type: 'ready' });

@@ -39,7 +39,7 @@ export interface ResolvedTarget {
   readonly provide: Readonly<Record<string, JsonValue>>;
   /** Runs in each of the target's workers before its first test. */
   readonly bootstrap: TargetBootstrap | undefined;
-  /** Runs in the runner for each slot whose bootstrap succeeded, once the target's work there ended. */
+  /** Runs in the runner at the end of the run for each slot whose bootstrap succeeded or provided anything. */
   readonly teardown: TargetTeardown | undefined;
 }
 
