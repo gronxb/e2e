@@ -275,6 +275,7 @@ targets: [
 | [`app`](#the-app-under-test) | `TargetApp` | - |
 | [`trace`](#trace) | `RecordingMode` | the config's `trace` |
 | [`video`](#video) | `RecordingMode` | the config's `video` |
+| [`provide`](#provide) | `Record<string, JsonValue>` | `{}` |
 
 - `{ engine: web(), app: { url } }` is a complete target.
 - A test whose `requires` names a capability the target lacks is skipped for
@@ -317,6 +318,33 @@ engine: web({ browser: 'firefox' }),
 
 A target without an engine runs through agent tools only. A target with `app`
 and no engine is `INVALID_CONFIG`.
+
+#### `provide`
+
+Values the tests running on this target read with
+[`inject()`](/reference/test#inject), the way Vitest's `provide` works. Use
+it to tell two targets on one platform apart, such as the arms of an A/B
+experiment.
+
+```ts title="e2e.config.ts"
+const variant = (name: 'A' | 'B') => ({
+  name: `checkout-${name}`,
+  engine: mobile({ platform: 'android' }),
+  app: { bundleId: 'com.example.app', launchArguments: ['-variant', name] },
+  provide: { variant: name },
+});
+
+export default { targets: [variant('A'), variant('B')] } satisfies E2EConfig;
+```
+
+- Keys are strings and values are JSON. Anything else is `INVALID_CONFIG`.
+- The values are part of the config digest, so the runner and its workers
+  always agree on them.
+- They are not in the report. The target name is what tells the variants
+  apart there.
+- The replay cache is keyed by target name and app identity, not by these
+  values. Rename the target or change `app.identity` when a change to them
+  should not replay old recordings.
 
 ### The app under test
 
@@ -1635,6 +1663,8 @@ export interface Target {
   trace?: RecordingMode;
   /** Which attempts on this target record a video, in place of the config's `video`. */
   video?: RecordingMode;
+  /** Values the tests on this target read with `inject()`; JSON only. */
+  provide?: Readonly<Record<string, JsonValue>>;
 }
 ```
 

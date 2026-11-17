@@ -9,6 +9,7 @@ import { collectFromRegistration } from '../../collect/collect.ts';
 import { collectModule } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import { importModule, loadConfigModule } from '../../config/load.ts';
+import { setProvidedValues } from '../../provided.ts';
 import { assignPorts } from '@e2e-dev/core/lib/config/resolve';
 import { resolveConfig } from '../../config/resolve-run.ts';
 import { setSecretRegistry } from '@e2e-dev/core/lib/secrets';
@@ -202,6 +203,7 @@ async function bootstrap(
     return { pairs, missing, registration };
   };
 
+  setProvidedValues(target.provide);
   return {
     config,
     target,
