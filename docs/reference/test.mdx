@@ -658,6 +658,35 @@ fixtures, hooks, and the test body do not start after an abandoned setup or
 hook finishes.
 </Note>
 
+### `inject`
+
+Reads a value the current target [`provide`s](/reference/config#provide).
+
+```ts title="tests/checkout.e2e.ts"
+import { expect, inject, test } from 'e2e';
+
+declare module 'e2e' {
+  interface ProvidedContext {
+    variant: 'A' | 'B';
+  }
+}
+
+test('B shows the new checkout', async ({ app, screen }) => {
+  test.skip(inject('variant') !== 'B', 'B only');
+  await app.open();
+  await expect(screen.getByText('New checkout')).toBeVisible();
+});
+```
+
+- Call it in a test body, a hook, a fixture, or code they call. Its type
+  comes from `ProvidedContext`, which you widen with `declare module 'e2e'`.
+- A key the target does not provide returns `undefined`, as in Vitest.
+- A worker runs one target, so `inject` returns that target's values.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | Called while a test file is collected, such as at its top level. The runner collects every file once for all targets, so a value there would differ from the worker's. Branch inside the body with `test.skip` instead. |
+
 ## Types
 
 ### `TestAPI`

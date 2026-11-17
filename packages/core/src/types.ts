@@ -1325,6 +1325,11 @@ export interface Target {
    * `UNSUPPORTED_ARTIFACT`.
    */
   video?: RecordingMode;
+  /**
+   * Values the code running on this target reads with `inject()` from
+   * `e2e`: tests, hooks, and fixtures. JSON values only.
+   */
+  provide?: Readonly<Record<string, JsonValue>>;
 }
 
 /**

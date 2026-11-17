@@ -2,6 +2,8 @@
 
 export { afterAll, afterEach, beforeAll, beforeEach, describe, test } from './collect/registry.ts';
 export { expect } from './expect/index.ts';
+export { inject } from './provided.ts';
+export type { ProvidedContext } from './provided.ts';
 export { credentials, secrets } from '@e2e-dev/core/lib/secrets';
 export { unique } from '@e2e-dev/core/lib/params';
 export { AgentError, isAgentError } from '@e2e-dev/core/lib/agent/error';

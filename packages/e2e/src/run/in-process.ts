@@ -19,6 +19,7 @@ import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from './unit-runne
 import { pairKey } from './units.ts';
 import type { MainToWorker, RunUnitMessage, WirePair } from './worker/protocol.ts';
 import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './worker/session.ts';
+import { clearProvidedValues, setProvidedValues } from '../provided.ts';
 
 export interface InProcessRunnerOptions {
   readonly config: ResolvedConfig;
@@ -163,6 +164,8 @@ class InProcessRunner implements UnitRunner {
     this.exited = true;
     process.off('unhandledRejection', this.onRejection);
     process.off('uncaughtException', this.onException);
+    // The runner's own process collects the next run's tests, where inject() must refuse.
+    clearProvidedValues();
     this.events.onExit(detail);
     this.finish();
   }
@@ -173,6 +176,8 @@ class InProcessRunner implements UnitRunner {
     if (target === undefined) {
       throw new ConfigurationError('UNKNOWN_TARGET', `unknown target "${this.targetName}"`);
     }
+    // One in-process worker runs at a time, so the process's values are this target's.
+    setProvidedValues(target.provide);
     return {
       config,
       target,

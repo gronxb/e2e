@@ -8,7 +8,8 @@ import { isEngineHandle } from '../engine/index.ts';
 import { protocolEngine, type EngineClientHandle } from '../engine/protocol/client.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ResolvedRecording } from '../internal/recording-modes.ts';
-import type { Target } from '../types.ts';
+import type { JsonValue, Target } from '../types.ts';
+import { validateJsonValue } from '../internal/json-value.ts';
 import { checkTargetApp, digestTargetApp, resolveTargetApp, TARGET_KEYS, unknownTargetKey, type ResolvedApp, type TargetAppDeclaration } from './app.ts';
 import { isRecord } from './command.ts';
 import { describeValue } from './validate.ts';
@@ -34,6 +35,8 @@ export interface ResolvedTarget {
   readonly trace: ResolvedRecording;
   /** Which attempts on the target record a video: `--video`, else the target's `video`, else the config's, else `off`. A test's own `video` wins over it. */
   readonly video: ResolvedRecording;
+  /** Values the target hands the code that runs on it, read with `inject()`; JSON only. */
+  readonly provide: Readonly<Record<string, JsonValue>>;
 }
 
 /** A safe artifact path segment: the filename alphabet, and never `.` or `..`, which would name a directory's self or parent. */
@@ -96,6 +99,7 @@ export function resolveTargets(
     if (target.name === undefined) defaulted.add(name);
     const engine = target.engine === undefined ? undefined : protocolEngine(target.engine);
     const declaredApp = checkTargetApp(name, engine, target.app);
+    const provide = checkProvide(where, target.provide);
     return {
       name,
       index,
@@ -104,8 +108,23 @@ export function resolveTargets(
       app: resolveTargetApp(name, declaredApp, projectRoot),
       declaredApp,
       ...recordings(target, where),
+      provide,
     };
   });
+}
+
+/** A target's `provide`: a plain object of JSON values, string keys only. */
+function checkProvide(where: string, declared: unknown): Readonly<Record<string, JsonValue>> {
+  if (declared === undefined) return {};
+  if (!isRecord(declared)) throw new ConfigurationError('INVALID_CONFIG', `${where} provide must be an object, got ${describeValue(declared)}`);
+  for (const [key, value] of Object.entries(declared)) {
+    try {
+      validateJsonValue(value, `${where} provide.${key}`);
+    } catch (error) {
+      throw new ConfigurationError('INVALID_CONFIG', error instanceof Error ? error.message : String(error));
+    }
+  }
+  return declared as Readonly<Record<string, JsonValue>>;
 }
 
 /**
@@ -137,10 +156,11 @@ export function launchesPinnedApp(target: ResolvedTarget): boolean {
  * reduced to their names and the run's port never.
  */
 export function digestTargets(targets: readonly ResolvedTarget[]) {
-  return targets.map(({ name, platform, engine, declaredApp }) => ({
+  return targets.map(({ name, platform, engine, declaredApp, provide }) => ({
     name,
     platform,
     app: digestTargetApp(declaredApp),
+    provide,
     ...(engine === undefined
       ? {}
       : {

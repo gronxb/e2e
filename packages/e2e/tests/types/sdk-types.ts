@@ -8,6 +8,7 @@ import { z } from 'zod';
 import {
   credentials,
   expect,
+  inject,
   secrets,
   unique,
   test,
@@ -1118,3 +1119,20 @@ createCoreAgent({}, {});
 declare const coreExecutor: CoreStepExecutor;
 declare const coreStore: CoreCacheStore;
 void createCoreAgent(gadgetSession, { executor: coreExecutor, cache: { store: coreStore } });
+
+// A target's `provide` is JSON, read back with `inject()` under the keys ProvidedContext declares.
+declare module '../../src/provided.ts' {
+  interface ProvidedContext {
+    variant: 'A' | 'B';
+  }
+}
+const providedVariant: 'A' | 'B' = inject('variant');
+void providedVariant;
+// @ts-expect-error a key ProvidedContext does not declare
+inject('undeclared');
+// @ts-expect-error inject returns the declared type, not any
+const wrongVariant: number = inject('variant');
+void wrongVariant;
+void ({ targets: [{ name: 'variant-a', provide: { variant: 'A', flags: { checkout: 'classic' }, ids: [1, 2] } }] } satisfies E2EConfig);
+// @ts-expect-error provide holds JSON values, not functions
+void ({ targets: [{ name: 'variant-a', provide: { login: () => 'token' } }] } satisfies E2EConfig);
