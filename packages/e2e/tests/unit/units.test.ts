@@ -55,6 +55,8 @@ const target: ResolvedTarget = {
   trace: { mode: 'off', source: 'default' },
   video: { mode: 'off', source: 'default' },
   provide: {},
+  bootstrap: undefined,
+  teardown: undefined,
 };
 
 function makeTest(

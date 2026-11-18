@@ -1,3 +1,4 @@
+import type { JsonValue } from '@e2e-dev/core/lib/types';
 /** Run orchestration: config, collection, selection, execution, reporting. */
 
 import { rm } from 'node:fs/promises';
@@ -461,6 +462,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   let sessionStore: SessionStore | undefined;
   /** The engines' prepare/finish pairing: every prepared target is finished at teardown. */
   const engines = new PreparedEngines();
+  /** What each target's bootstrap provided, by target and worker slot: handed to a replacement worker on that slot, and to the target's teardown. */
+  const providedBySlot = new Map<string, { readonly targetName: string; readonly slot: number; readonly values: Readonly<Record<string, JsonValue>> }>();
   const notice = (target: string, message: string): void => emit({ type: 'notice', target, message });
 
   // Hoisted: workers re-resolve the same config file and need these overrides,
@@ -1100,6 +1103,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             debug,
             step: stepHolding,
             envFor: workerEnvFor(plans, env),
+            providedFor: (targetName, slot) => providedBySlot.get(`${targetName}#${String(slot)}`)?.values,
           })
         : childProcessSpawner({
             configPath: workerConfigPath,
@@ -1117,6 +1121,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             aiTrace: aiTrace !== undefined,
             step: stepHolding,
             envFor: workerEnvFor(plans, env),
+            providedFor: (targetName, slot) => providedBySlot.get(`${targetName}#${String(slot)}`)?.values,
           });
 
     // The list reporter shows the prompt under its test; without it, the
@@ -1136,6 +1141,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     pendingNonRun = [];
     appExitTargets = await debug.time('scheduler', () =>
       runUnits({
+        onProvided: (targetName, slot, values) => {
+          providedBySlot.set(`${targetName}#${String(slot)}`, { targetName, slot, values });
+        },
         plans,
         workers: runWorkers,
         ...(options.maxFailures === undefined ? {} : { maxFailures: options.maxFailures }),
@@ -1218,7 +1226,30 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // shutdown. Services go down after the apps that depended on them; a
     // failing service teardown command is a cleanup error of the run, not a
     // crash.
+    // Each target's teardown, once per slot whose bootstrap succeeded or
+    // provided anything, before the engines finish: it releases what
+    // bootstrap took on the app's backend, even when bootstrap failed after
+    // providing it or a worker on the slot crashed.
+    const targetTeardowns = async (): Promise<void> => {
+      for (const { targetName, slot, values } of providedBySlot.values()) {
+        const target = config.targets.find((candidate) => candidate.name === targetName);
+        if (target?.teardown === undefined) continue;
+        const all: Readonly<Record<string, JsonValue>> = { ...target.provide, ...values };
+        notice(targetName, `teardown on slot ${String(slot)}`);
+        try {
+          await target.teardown({
+            target: { name: target.name, platform: target.platform, slot },
+            runId,
+            inject: (key: string) => all[key],
+            signal: AbortSignal.timeout(config.cleanupTimeout),
+          });
+        } catch (cause) {
+          recordFailure(cause, 'cleanup');
+        }
+      }
+    };
     for (const teardown of [
+      targetTeardowns,
       () => engines.finish({ runId, env, timeoutMs: config.cleanupTimeout, notice, onFailure: (cause) => recordFailure(cause, 'cleanup') }),
       () => sessionStore?.cleanup(),
       () => processes?.stop((cause) => recordFailure(cause, 'cleanup')),

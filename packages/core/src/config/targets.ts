@@ -8,7 +8,7 @@ import { isEngineHandle } from '../engine/index.ts';
 import { protocolEngine, type EngineClientHandle } from '../engine/protocol/client.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ResolvedRecording } from '../internal/recording-modes.ts';
-import type { JsonValue, Target } from '../types.ts';
+import type { JsonValue, Target, TargetBootstrap, TargetTeardown } from '../types.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
 import { checkTargetApp, digestTargetApp, resolveTargetApp, TARGET_KEYS, unknownTargetKey, type ResolvedApp, type TargetAppDeclaration } from './app.ts';
 import { isRecord } from './command.ts';
@@ -37,6 +37,10 @@ export interface ResolvedTarget {
   readonly video: ResolvedRecording;
   /** Values the target hands the code that runs on it, read with `inject()`; JSON only. */
   readonly provide: Readonly<Record<string, JsonValue>>;
+  /** Runs in each of the target's workers before its first test. */
+  readonly bootstrap: TargetBootstrap | undefined;
+  /** Runs in the runner at the end of the run for each slot whose bootstrap succeeded or provided anything. */
+  readonly teardown: TargetTeardown | undefined;
 }
 
 /** A safe artifact path segment: the filename alphabet, and never `.` or `..`, which would name a directory's self or parent. */
@@ -100,6 +104,11 @@ export function resolveTargets(
     const engine = target.engine === undefined ? undefined : protocolEngine(target.engine);
     const declaredApp = checkTargetApp(name, engine, target.app);
     const provide = checkProvide(where, target.provide);
+    for (const hook of ['bootstrap', 'teardown'] as const) {
+      if (target[hook] !== undefined && typeof target[hook] !== 'function') {
+        throw new ConfigurationError('INVALID_CONFIG', `${where} ${hook} must be a function, got ${describeValue(target[hook])}`);
+      }
+    }
     return {
       name,
       index,
@@ -109,6 +118,8 @@ export function resolveTargets(
       declaredApp,
       ...recordings(target, where),
       provide,
+      bootstrap: target.bootstrap,
+      teardown: target.teardown,
     };
   });
 }
@@ -156,11 +167,12 @@ export function launchesPinnedApp(target: ResolvedTarget): boolean {
  * reduced to their names and the run's port never.
  */
 export function digestTargets(targets: readonly ResolvedTarget[]) {
-  return targets.map(({ name, platform, engine, declaredApp, provide }) => ({
+  return targets.map(({ name, platform, engine, declaredApp, provide, bootstrap, teardown }) => ({
     name,
     platform,
     app: digestTargetApp(declaredApp),
     provide,
+    hooks: { bootstrap: bootstrap !== undefined, teardown: teardown !== undefined },
     ...(engine === undefined
       ? {}
       : {

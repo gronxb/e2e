@@ -203,7 +203,8 @@ async function bootstrap(
     return { pairs, missing, registration };
   };
 
-  setProvidedValues(target.provide);
+  // What the target provides, then what its bootstrap provided on this slot in an earlier worker.
+  setProvidedValues({ ...target.provide, ...message.provided });
   return {
     config,
     target,
@@ -222,6 +223,7 @@ async function bootstrap(
     resolvePairs,
     debug,
     step: message.step,
+    provided: message.provided,
   };
 }
 

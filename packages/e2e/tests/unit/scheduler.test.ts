@@ -75,6 +75,8 @@ function makeTarget(name: string, index: number, engine?: EngineHandle): Resolve
     trace: { mode: 'off', source: 'default' },
     video: { mode: 'off', source: 'default' },
     provide: {},
+    bootstrap: undefined,
+    teardown: undefined,
   };
 }
 

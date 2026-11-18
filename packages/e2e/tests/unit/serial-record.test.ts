@@ -81,6 +81,8 @@ function makeTarget(name: string, index: number): ResolvedTarget {
     trace: { mode: 'off', source: 'default' },
     video: { mode: 'off', source: 'default' },
     provide: {},
+    bootstrap: undefined,
+    teardown: undefined,
   };
 }
 

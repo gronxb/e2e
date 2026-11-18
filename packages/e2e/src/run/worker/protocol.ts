@@ -1,3 +1,4 @@
+import type { JsonValue } from '@e2e-dev/core/lib/types';
 /**
  * Protocol between the scheduler and one target worker. Every message is
  * JSON-serializable so the same shapes work over a child-process IPC channel
@@ -75,6 +76,8 @@ export interface WorkerBootstrap {
   readonly aiTrace: boolean;
   /** How each top-level step waits for the runner's `step-release` (`e2e run --step`); undefined when steps never wait. */
   readonly step: StepHolding | undefined;
+  /** What this target's bootstrap provided on this slot in an earlier worker, for `inject()` and the next bootstrap. */
+  readonly provided?: Readonly<Record<string, JsonValue>> | undefined;
 }
 
 export interface RunUnitMessage {
@@ -155,6 +158,12 @@ export type MainToWorker =
 
 export interface ReadyMessage {
   readonly type: 'ready';
+}
+
+/** What this worker's bootstrap provided, for the runner to keep per slot. */
+export interface ProvidedMessage {
+  readonly type: 'provided';
+  readonly values: Readonly<Record<string, JsonValue>>;
 }
 
 /** One pair about to execute, as reporters see it. */
@@ -359,6 +368,7 @@ export interface RunAbortMessage {
 
 export type WorkerToMain =
   | ReadyMessage
+  | ProvidedMessage
   | PairStartMessage
   | ProgressMessage
   | AttemptDeadlineMessage
