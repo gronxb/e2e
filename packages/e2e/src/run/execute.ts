@@ -21,6 +21,7 @@ import { attemptSegments, createAttemptArtifacts, resultSegment } from '@e2e-dev
 import { AttemptBudget } from '@e2e-dev/core/lib/run/budget';
 import { createExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
+import { writeHostTrace } from './host-trace.ts';
 import { createFixtures } from '@e2e-dev/core/lib/run/fixtures';
 import { WrittenScreenshots } from '@e2e-dev/core/lib/run/screenshots';
 import { publishAttempt } from '@e2e-dev/core/lib/expect/attempt';
@@ -263,7 +264,10 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
    * `app` work the way they do in a test. `inject` reads the target's
    * `provide` and what a bootstrap on this slot provided before; returns
    * those earlier values with what this run added. `onProvide` hears each
-   * `provide()` as it happens, with every value so far.
+   * `provide()` as it happens, with every value so far. A bootstrap that
+   * fails leaves its evidence the way a failed test does: its steps, the
+   * screen at the failure, and its artifacts, on a trace page the thrown
+   * error names, since no result in the report carries this attempt.
    */
   async runBootstrap(
     bootstrap: TargetBootstrap,
@@ -274,7 +278,11 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
     const abort = new AbortController();
     const onInterrupt = (): void => abort.abort();
     this.interruptSignal.addEventListener('abort', onInterrupt, { once: true });
-    const owner = `bootstrap-${this.target.name}-${String(this.options.workerSlot)}`;
+    const slot = String(this.options.workerSlot);
+    const owner = `bootstrap-${this.target.name}-${slot}`;
+    // Each try on a slot gets its own directory: a replacement worker's try
+    // must not write over the evidence of the one that failed before it.
+    const segments = ['bootstrap', `${this.target.name}-${slot}`, ...(this.rerunDir === undefined ? [] : [this.rerunDir]), attemptId];
     const steps = new StepRecorder(attemptId, {
       attempt: { id: attemptId, index: 0 },
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
@@ -283,12 +291,14 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
     });
     const artifacts = createAttemptArtifacts({
       artifactsRoot: this.artifactsRoot,
-      segments: attemptSegments(this.rerunDir, owner, 0),
+      segments,
       attemptId,
       currentStepId: () => steps.currentStepId,
       ledger: () => undefined,
       identity: { runId: this.options.runId, testId: owner, attemptId },
     });
+    const startedAt = timestamp();
+    const startedMs = Date.now();
     const provided: Record<string, JsonValue> = { ...earlier };
     const session = await this.launchSession(
       { session: undefined, recordings: { trace: undefined, video: undefined } },
@@ -296,8 +306,11 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
       artifacts.dir,
       abort.signal,
     );
-    const record: { status: 'passed'; cleanup: AttemptRecord['cleanup'] } = { status: 'passed', cleanup: 'complete' };
+    session.appLog.route((event, at) => steps.recordAppEvent(event, at));
+    const record: { status: AttemptRecord['status']; cleanup: AttemptRecord['cleanup'] } = { status: 'passed', cleanup: 'complete' };
     const secondaryErrors: SerializedError[] = [];
+    let failure: E2EError | undefined;
+    let evidence: AttemptRecord['failure'];
     try {
       const budget = new AttemptBudget(abort.signal, new Deadline(this.config.launchTimeout));
       const { fixtures } = createFixtures({
@@ -341,12 +354,98 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
         this.config.launchTimeout,
         () => new TestTimeoutError(`bootstrap of target "${this.target.name}" timed out after ${String(this.config.launchTimeout)}ms`),
       );
+    } catch (cause) {
+      failure = classifyError(cause);
+      record.status = classifyAttemptStatus(serializeError(failure), failure instanceof TestTimeoutError, failure.code === 'CANCELLED');
+      // The screen as the failure left it, taken before the session closes.
+      if (!this.interruptSignal.aborted) {
+        evidence = await captureFailureEvidence({
+          session,
+          error: failure,
+          ledger: sessionLedger(session, this.config.allSecrets),
+          config: this.config,
+          appOrigin: this.target.app.base?.origin,
+          artifacts: artifacts.sink,
+          operation: (signal, timeoutMs) => this.op(attemptId, timeoutMs, signal),
+          interrupt: this.interruptSignal,
+        }).catch(() => undefined);
+      }
     } finally {
       abort.abort();
+      session.appLog.route(undefined);
       await this.closeSession(session, { attemptId, video: undefined }, record, artifacts.sink, secondaryErrors);
       this.interruptSignal.removeEventListener('abort', onInterrupt);
     }
-    return provided;
+    if (failure === undefined) return provided;
+    throw await this.bootstrapFailure(failure, {
+      attemptId, startedAt, startedMs, steps, artifacts, segments, record, evidence, secondaryErrors,
+    });
+  }
+
+  /**
+   * Writes a failed bootstrap's trace page (its steps, the screen at the
+   * failure, its artifacts) and returns the error to throw: the failure,
+   * naming the target, the slot, and that page. Writing the page is
+   * best-effort; the failure is thrown either way.
+   */
+  private async bootstrapFailure(
+    failure: E2EError,
+    attempt: {
+      attemptId: string;
+      startedAt: string;
+      startedMs: number;
+      steps: StepRecorder;
+      artifacts: ReturnType<typeof createAttemptArtifacts>;
+      segments: readonly string[];
+      record: { status: AttemptRecord['status']; cleanup: AttemptRecord['cleanup'] };
+      evidence: AttemptRecord['failure'];
+      secondaryErrors: SerializedError[];
+    },
+  ): Promise<E2EError> {
+    const { projectRoot } = this.config;
+    const redact = (text: string): string => redactForSession(undefined, this.config.allSecrets, text);
+    const where = `bootstrap of target "${this.target.name}" failed on worker slot ${String(this.options.workerSlot)}`;
+    let page: string | undefined;
+    try {
+      attempt.steps.abandonRunning();
+      await attempt.artifacts.settle();
+      const tracePath = path.join(attempt.artifacts.dir, 'trace.md');
+      await writeHostTrace({
+        config: this.config,
+        target: this.target,
+        runId: this.options.runId,
+        testId: `bootstrap:${this.target.name}:${String(this.options.workerSlot)}`,
+        title: `bootstrap ${this.target.name} slot ${String(this.options.workerSlot)}`,
+        agent: this.config.agentNames[0] ?? '',
+        resultsDir: this.artifactsRoot,
+        segments: attempt.segments,
+        tracePath,
+        redact,
+        attempt: {
+          id: attempt.attemptId,
+          index: 0,
+          status: attempt.record.status,
+          startedAt: attempt.startedAt,
+          durationMs: Date.now() - attempt.startedMs,
+          steps: [...attempt.steps.all()],
+          appLog: [...attempt.steps.appLog()],
+          artifacts: attempt.artifacts.records,
+          error: serializeError(failure, { phase: 'body', projectRoot, redact }),
+          ...(attempt.evidence === undefined ? {} : { failure: attempt.evidence }),
+          secondaryErrors: attempt.secondaryErrors,
+          cleanup: attempt.record.cleanup,
+        },
+      });
+      page = path.relative(projectRoot, tracePath);
+    } catch {
+      // The failure is what matters; a page that could not be written leaves it without a pointer.
+    }
+    const message = `${where}: ${failure.message}${page === undefined ? '' : `\nIts steps and the screen at the failure: ${page}`}`;
+    return new E2EError(failure.category, failure.code, message, {
+      retryable: failure.retryable,
+      cause: failure,
+      ...(failure.details === undefined ? {} : { details: failure.details }),
+    });
   }
 
   async runFileUnit(

@@ -1336,7 +1336,10 @@ export interface Target {
    * `provide()` reaches the runner when it is called. Runs again when a
    * worker is replaced, after a failing test, a crash, or a failed
    * bootstrap; what was provided on the same slot is visible through
-   * `inject` then, so one-time work can be skipped.
+   * `inject` then, so one-time work can be skipped. A bootstrap that throws
+   * or times out leaves its steps and the screen at the failure on a trace
+   * page under `results/bootstrap/`, which its run error names; a passing
+   * bootstrap's steps are not in the report.
    */
   bootstrap?(context: BootstrapContext): void | Promise<void>;
   /**

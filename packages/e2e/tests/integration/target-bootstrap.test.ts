@@ -8,9 +8,10 @@ import { runProjectWithConfigFile } from '../helpers/run-project.ts';
  * A worker-path config whose targets log every bootstrap and teardown to
  * `log`. `failing` throws before providing; `afterProvide` provides, then
  * fails as a sign-in would (`throw`, every time) or kills its worker
- * (`crash`, the first time only).
+ * (`crash`, the first time only). `step` taps Submit, then fails every
+ * time; `step-once` does the same on the first try only.
  */
-const config = (log: string, failing: string, afterProvide: { target: string; how: 'throw' | 'crash' } | undefined = undefined) => `import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
+const config = (log: string, failing: string, afterProvide: { target: string; how: 'throw' | 'crash' | 'step' | 'step-once' } | undefined = undefined) => `import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import type { App, BootstrapContext, E2EConfig, Screen, Target } from 'e2e';
 import { createFakeEngine, FAKE_APP } from '../../helpers/fake-engine.ts';
 
@@ -30,6 +31,15 @@ const role = (name: string): Target => ({
     provide('account', known ?? target.name + '-account');
     if (target.name === ${JSON.stringify(afterProvide?.target ?? '')}) {
       if (${JSON.stringify(afterProvide?.how)} === 'throw') throw new Error('sign-in failed');
+      if (${JSON.stringify(afterProvide?.how)} === 'step' || ${JSON.stringify(afterProvide?.how)} === 'step-once') {
+        await screen.getByRole('button', 'Submit').tap();
+        const once = ${JSON.stringify(log)} + '.failed-once';
+        if (${JSON.stringify(afterProvide?.how)} === 'step' || !existsSync(once)) {
+          writeFileSync(once, '');
+          throw new Error('sign-in did not reach home');
+        }
+        return;
+      }
       const marker = ${JSON.stringify(log)} + '.crashed';
       if (!existsSync(marker)) {
         writeFileSync(marker, '');
@@ -143,6 +153,44 @@ describe('target bootstrap and teardown', () => {
       expect(member.slice(1, -1).every((line) => line === 'bootstrap member#0 known=member-account fixtures worker')).toBe(true);
       expect(member.at(-1)).toBe('teardown member#0 account=member-account runner');
       expect(member.filter((line) => line.startsWith('teardown'))).toHaveLength(1);
+      project.cleanup();
+    },
+    120_000,
+  );
+  it(
+    'leaves the steps and the screen of every failed bootstrap on a trace page its run error names',
+    async () => {
+      const log = newLog();
+      const { outcome, project } = await runProjectWithConfigFile(SUITE, { configSource: config(log, 'none', { target: 'member', how: 'step' }) });
+      const failures = outcome.report.run.errors.filter((error) => error.message.includes('bootstrap of target "member"'));
+      // Two tries, two pages: the second does not write over the first.
+      expect(failures).toHaveLength(2);
+      const pages = failures.map((error) => /Its steps and the screen at the failure: (\S+trace\.md)/u.exec(error.message)?.[1]);
+      expect(new Set(pages).size).toBe(2);
+      for (const [index, error] of failures.entries()) {
+        expect(error.message).toContain('failed on worker slot 0: sign-in did not reach home');
+        const page = readFileSync(path.join(project.dir, pages[index]!), 'utf8');
+        expect(page).toContain('Submit');
+        expect(page).toContain('sign-in did not reach home');
+        expect(page).toMatch(/tap/iu);
+      }
+      expect(outcome.results.filter((result) => result.target.name === 'member').map((result) => result.status)).toEqual(['skipped', 'skipped']);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'keeps the trace page of a bootstrap that failed once when the next try succeeds',
+    async () => {
+      const log = newLog();
+      const { outcome, project } = await runProjectWithConfigFile(SUITE, { configSource: config(log, 'none', { target: 'member', how: 'step-once' }) });
+      const failures = outcome.report.run.errors.filter((error) => error.message.includes('bootstrap of target "member"'));
+      expect(failures).toHaveLength(1);
+      const page = /Its steps and the screen at the failure: (\S+trace\.md)/u.exec(failures[0]!.message)?.[1];
+      expect(readFileSync(path.join(project.dir, page!), 'utf8')).toContain('sign-in did not reach home');
+      const member = outcome.results.filter((result) => result.target.name === 'member').map((result) => `${result.test.title} ${result.status}`).toSorted();
+      expect(member).toEqual(['fails once to replace the worker failed', 'reads what bootstrap provided passed']);
       project.cleanup();
     },
     120_000,
